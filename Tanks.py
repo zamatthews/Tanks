@@ -73,6 +73,11 @@ class Tank(object):
 	def draw(self, surface):
 		surface.blit(self.tank, self.tank_rect);
 		surface.blit(self.turret, self.turret_rect);
+		
+class bullet(object):
+	def __init__(self):
+		self.it = 0
+		
 
 class Driver(object):
 	def __init__(self):
