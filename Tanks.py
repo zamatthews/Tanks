@@ -35,7 +35,8 @@ class Tank(object):
 		self.rotate_speed = 1
 		self.turn_speed = 1
 		self.move_speed = 1
-		self.bullet_timer = 0;
+		self.bullet_timer = 0
+		self.gun_cooldown = 0
 		self.gun = gun_type.basic
 		
 	def spin_turret(self):
@@ -50,7 +51,7 @@ class Tank(object):
 		self.tank_rect = self.tank.get_rect(center = self.tank_rect.center)
 		
 	def get_pos(self):
-		return tank_pos
+		return self.tank_pos
 		
 	def move_tank(self, island_rect):
 		new_x = self.tank_pos[0] + self.move_speed*math.sin(math.radians(self.tank_angle - 90))*self.tank_move_direction
@@ -81,7 +82,7 @@ class Tank(object):
 		if keys[pg.K_SPACE] and self.bullet_timer == 0:
 			self.add_bullet(bullets)
 			bullets.add(bullet(self.turret_rect.center, self.turret_angle))
-			self.bullet_timer = 60
+			self.bullet_timer = self.gun_cooldown
 		if self.bullet_timer > 0:
 			self.bullet_timer -= 1
 			
@@ -109,10 +110,13 @@ class Tank(object):
 		global bonus 
 		if bonus < 10:
 			gun = gun_type.basic
+			self.gun_cooldown = 140
 		elif bonus < 25:
 			self.gun = gun_type.advanced
+			self.gun_cooldown = 120
 		else:
 			self.gun = gun_type.ultra
+			self.gun_cooldown = 120
 		
 	def draw(self, surface):
 		surface.blit(self.tank, self.tank_rect);
@@ -158,7 +162,7 @@ class missile_type(Enum):
 	hard = 3
 	
 class missile(pg.sprite.Sprite):
-	def __init__(self, location, angle, type):
+	def __init__(self, location, angle, type, player_pos):
 	
 		pg.sprite.Sprite.__init__(self)
 		self.angle = angle
@@ -166,19 +170,30 @@ class missile(pg.sprite.Sprite):
 		
 		if type == missile_type.easy:
 			self.image = pg.transform.rotate(MISSILE_1, angle)
-			self.speed = 0.5
+			self.speed = 1.5
+		else:
+			self.speed = 2.0
+			self.angle = ( math.atan((player_pos[0] - location[0])/ (player_pos[1] - location[1]))) * 180/math.pi - 90;
+			if player_pos[1] < location[1]:
+				self.angle += 180
+			
 		if type == missile_type.normal:
-			self.image = pg.transform.rotate(MISSILE_2, angle)
-			self.speed = 1
+			self.image = pg.transform.rotate(MISSILE_2, self.angle)
 		if type == missile_type.hard:
-			self.image = pg.transform.rotate(MISSILE_3, angle)
-			self.speed = 0.75
+			self.image = pg.transform.rotate(MISSILE_3, self.angle)
+			self.speed = 1.25
 			
 		self.pos = location
 		self.rect = self.image.get_rect(center=location)
 		self.done = False;
 		
-	def update(self, screen_rect):
+	def update(self, screen_rect, player_pos):
+		if self.type == missile_type.hard:
+			self.angle = ( math.atan((player_pos[0] - self.pos[0])/ (player_pos[1] - self.pos[1]))) * 180/math.pi - 90;
+			if player_pos[1] < self.pos[1]:
+				self.angle += 180
+			self.image = pg.transform.rotate(MISSILE_3, self.angle)
+			
 		self.pos = (self.pos[0] + self.speed*math.sin(math.radians(self.angle + 90)), self.pos[1] + self.speed*math.cos(math.radians(self.angle + 90)))
 		self.rect = self.image.get_rect(center = self.pos)
 		self.remove(screen_rect)
@@ -216,7 +231,7 @@ class Driver(object):
 		self.check_collisions()
 		self.player.update(self.island_rect)
 		self.bullets.update(self.screen_rect)
-		self.missiles.update(self.screen_rect)
+		self.missiles.update(self.screen_rect, self.player.get_pos())
 		
 	def draw_objects(self):
 		self.screen.fill(BACKGROUND_COLOR)
@@ -250,7 +265,6 @@ class Driver(object):
 	def add_missile(self):
 		side = randint(1, 4)
 		side_pos = randint(0, SCREEN_SIZE[0]);
-		print(self.score)
 		if side == 1:
 			location = (0, side_pos)
 			angle = 0
@@ -271,7 +285,7 @@ class Driver(object):
 			type = missile_type.normal
 		else:
 			type = missile_type.hard
-		self.missiles.add(missile(location, angle, type))		
+		self.missiles.add(missile(location, angle, type, self.player.get_pos()))
 			
 	
 	def new_wave(self):
@@ -282,9 +296,6 @@ class Driver(object):
 		missile_2_chance += self.missile_chance[0] / 3
 		missile_1_chance = self.missile_chance[0] * 2 / 3
 		self.missile_chance = (missile_1_chance, missile_2_chance, missile_3_chance);
-		print(missile_3_chance)
-		print(missile_2_chance)
-		print(missile_1_chance)
 
 			
 if __name__ == "__main__":
