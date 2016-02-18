@@ -324,7 +324,7 @@ class Driver(object):
 if __name__ == "__main__":
 	os.environ['SDL_VIDEO_CENTERED'] = '1'
 	pg.init()
-	pg.display.set_caption(CAPTION)
+	pg.display.set_caption("TANKS")
 	pg.display.set_mode(SCREEN_SIZE)
 	TURRET = pg.transform.scale(pg.image.load("Textures/Tank_Turret.png").convert_alpha(),(75, 75))
 	TANK = pg.transform.scale(pg.image.load("Textures/Tank_Base.png").convert_alpha(), (50, 50))
