@@ -13,7 +13,6 @@ SCREEN_SIZE = (700, 700)
 BACKGROUND_COLOR = (33, 17, 255)
 BORDER_SIZE = 500
 FPS_LOCK = 60
-GAME_OVER = False
 
 class gun_type(Enum):
 	basic = 1
@@ -126,7 +125,8 @@ class Tank(object):
 		elif self.gun == gun_type.ultra:
 			self.gun = gun_type.advanced
 		else:
-			GAME_OVER = True
+			return True
+		return False
 		
 	def draw(self, surface):
 		surface.blit(self.tank, self.tank_rect);
@@ -154,7 +154,6 @@ class bullet(pg.sprite.Sprite):
 		self.speed = 10
 		self.pos = location
 		self.rect = self.image.get_rect(center=location)
-		self.done = False;
 		
 	def update(self, screen_rect):
 		self.pos = (self.pos[0] + self.speed*math.sin(math.radians(self.angle + 90)), self.pos[1] + self.speed*math.cos(math.radians(self.angle + 90)))
@@ -182,7 +181,7 @@ class missile(pg.sprite.Sprite):
 			self.image = pg.transform.rotate(MISSILE_1, angle)
 			self.speed = 4
 		else:
-			self.speed = 6
+			self.speed = 4
 			self.angle = ( math.atan((player_pos[0] - location[0])/ (player_pos[1] - location[1]))) * 180/math.pi - 90;
 			if player_pos[1] < location[1]:
 				self.angle += 180
@@ -190,11 +189,10 @@ class missile(pg.sprite.Sprite):
 		if type == missile_type.normal:
 			self.image = pg.transform.rotate(MISSILE_2, self.angle)
 		if type == missile_type.hard:
-			self.speed = 4.5
+			self.speed = 3.5
 			self.image = pg.transform.rotate(MISSILE_3, self.angle)
 		self.pos = location
 		self.rect = self.image.get_rect(center=location)
-		self.done = False;
 		
 	def update(self, screen_rect, player_pos):
 		if self.type == missile_type.hard:
@@ -211,7 +209,7 @@ class missile(pg.sprite.Sprite):
 			self.kill()
 			return True
 			
-	def check_hit(self, tank_rect):
+	def check_hit(self, tank_rect, screen):
 		if self.rect.colliderect(tank_rect):
 			self.kill()
 			return True
@@ -221,20 +219,22 @@ class missile(pg.sprite.Sprite):
 	def remove(self, screen_rect):
 		if not self.rect.colliderect(screen_rect):
 			self.kill()
-		
-		
+	
 class Driver(object):
 	def __init__(self):
+		self.set()
+	def set(self):
 		self.screen = pg.display.get_surface()
 		self.screen_rect = self.screen.get_rect()
-		self.done = False
 		self.keys = pg.key.get_pressed()
 		self.player = Tank((SCREEN_SIZE[0] / 2, SCREEN_SIZE[1] / 2))
 		self.bullets = pg.sprite.Group()
 		self.missiles = pg.sprite.Group()
 		self.island = ISLAND
+		self.game_over = False
 		self.island_rect = self.island.get_rect(center =(SCREEN_SIZE[0] / 2, SCREEN_SIZE[1] / 2))
 		self.frequency = 256
+		self.wave = 1
 		self.goal_amount = 5
 		self.missile_chance = (100, 0, 0)
 		self.missile_tick = 0;
@@ -248,10 +248,12 @@ class Driver(object):
 		self.bullets.update(self.screen_rect)
 		self.missiles.update(self.screen_rect, self.player.get_pos())
 		
-	def draw_objects(self):
+	def draw_background(self):
 		self.screen.fill(BACKGROUND_COLOR)
 		self.screen.blit(self.island, self.island_rect)
+	def draw_objects(self):
 		self.bullets.draw(self.screen)
+		self.display()
 		self.player.draw(self.screen)
 		self.missiles.draw(self.screen)
 		
@@ -260,19 +262,59 @@ class Driver(object):
 			for missile in self.missiles:
 				if missile.check_shot(bullet):
 					self.score += 1
-					print(self.score)
 		for missile in self.missiles:		
-			if(missile.check_hit(self.player.get_rect())):
-				self.player.downgrade()
-	
+			if(missile.check_hit(self.player.get_rect(), self.screen)):
+				self.game_over = self.player.downgrade()
+	def menu_loop(self):
+		ready = False
+		choice = True
+		while not ready:
+			self.draw_background()
+			self.player.draw(self.screen)
+			self.display_menu(choice)
+			for event in pg.event.get():
+				if event.type == pg.QUIT:
+					return False
+				if event.type == pg.KEYDOWN:
+					self.keys = pg.key.get_pressed()
+					if self.keys[pg.K_DOWN] or self.keys[pg.K_UP] or self.keys[pg.K_w] or self.keys[pg.K_s]:
+						choice = not choice
+					if self.keys[pg.K_RETURN]:
+						if not choice:
+							return False
+						ready = True
+			pg.display.flip()
+		return True
+	def display_menu(self, choice):
+		if choice:
+			self.bullets.add(bullet((370, 420), 0))
+		else:
+			self.bullets.add(bullet((370, 470), 0))
+		self.screen.blit(FONT.render("TANKS BY ZACH MATTHEWS", 1, (255, 255, 255)), (100, 50))
+		self.screen.blit(FONT.render("PLAY", 1, (0, 0, 0)), (400, 400))
+		self.screen.blit(FONT.render("QUIT", 1, (0, 0, 0)), (400, 450))
+		self.screen.blit(SMALL_FONT.render(":O Oh No! You're being attacked by missiles.", 1, (0, 0, 0)), (110, 150))
+		self.screen.blit(SMALL_FONT.render("Better shoot them down! Try not to get hit!!!", 1, (0, 0, 0)), (110, 175))
+		self.screen.blit(SMALL_FONT.render("W = Forward", 1, (0, 0, 0)), (105, 250))
+		self.screen.blit(SMALL_FONT.render("A = Left Turn", 1, (0, 0, 0)), (105, 275))
+		self.screen.blit(SMALL_FONT.render("S = Reverse", 1, (0, 0, 0)), (105, 300))
+		self.screen.blit(SMALL_FONT.render("D = Right turn", 1, (0, 0, 0)), (105, 325))
+		self.screen.blit(SMALL_FONT.render("LEFT = turret Left", 1, (0, 0, 0)), (105, 350))
+		self.screen.blit(SMALL_FONT.render("RIGHT = turret Right", 1, (0, 0, 0)), (105, 375))
+		self.screen.blit(SMALL_FONT.render("SPACE = shoot", 1, (0, 0, 0)), (105, 400))
+		self.screen.blit(SMALL_FONT.render("ESC = quit", 1, (0, 0, 0)), (105, 425))
+		self.bullets.draw(self.screen)
+		self.bullets.empty()
 	def game_loop(self):
-		while not self.done:
+		self.set()
+		while not self.game_over:
 			for event in pg.event.get():
 				self.keys = pg.key.get_pressed()
 				if event.type == pg.QUIT or self.keys[pg.K_ESCAPE]:
-					self.done = True
+					sys.exit(0)
 			self.player.key_press(self.keys, self.bullets)
 			self.update_objects()
+			self.draw_background()
 			self.draw_objects()
 			pg.display.flip()
 			if self.missile_tick > self.frequency:
@@ -281,9 +323,34 @@ class Driver(object):
 			self.missile_tick += 1
 			if(self.score >= self.goal_amount):
 				self.new_wave()
-			self.clock.tick(self.fps)
-			pg.display.set_caption("{} - FPS: {:.2f}".format(CAPTION, self.clock.get_fps()))
-			
+			self.calc_fps()
+		self.end_screen()
+	def calc_fps(self):
+		self.clock.tick(self.fps)
+		pg.display.set_caption("{} - FPS: {:.2f}".format(CAPTION, self.clock.get_fps()))
+	def end_screen(self):
+		for alpha in range(0, 127):
+			self.draw_background()
+			self.draw_objects()
+			rect = pg.Surface((700,700))
+			rect.set_alpha(2 * alpha)
+			rect.fill((255,255,255))
+			self.screen.blit(rect, (0,0))
+#			self.screen.blit().fill((255, 255, 255, alpha))
+			pg.display.flip()
+			self.calc_fps()
+		self.screen.blit(FONT.render("GAME OVER", 1, (0, 0, 0)), (200, 200))
+		self.screen.blit(FONT.render("YOU SCORED " + str(self.score), 1, (0, 0, 0)), (180, 250))
+		self.screen.blit(FONT.render("PRESS ANY KEY TO CONTINUE", 1, (0, 0, 0)), (80, 300))
+		pg.display.flip()
+		cont = False
+		while not cont:	
+			for event in pg.event.get():
+					if event.type == pg.KEYDOWN:
+						cont = True
+		
+		
+		
 	def add_missile(self):
 		side = randint(1, 4)
 		side_pos = randint(100, SCREEN_SIZE[0] - 100);
@@ -308,11 +375,19 @@ class Driver(object):
 		else:
 			type = missile_type.hard
 		self.missiles.add(missile(location, angle, type, self.player.get_pos()))
-			
+		
+	def display(self):
+		score = FONT.render("SCORE: " + str(self.score), 1, (255, 255, 255))
+		wave = FONT.render("WAVE: " + str(self.wave), 1, (255, 255, 255))
+		to_go = FONT.render("Next Wave In: " + str(self.goal_amount - self.score), 1, (255, 255, 255))
+		self.screen.blit(score, (100, 50))
+		self.screen.blit(wave, (450, 50))
+		self.screen.blit(to_go, (100, 600))
 	
 	def new_wave(self):
+		self.wave += 1
 		self.frequency /= 1.5
-		self.goal_amount += 1.5 * self.goal_amount
+		self.goal_amount += round(1.5 * self.goal_amount)
 		self.player.upgrade()
 		missile_3_chance = self.missile_chance[2] + self.missile_chance[1] / 3
 		missile_2_chance  = self.missile_chance[1] * 2 / 3
@@ -324,16 +399,19 @@ class Driver(object):
 if __name__ == "__main__":
 	os.environ['SDL_VIDEO_CENTERED'] = '1'
 	pg.init()
+	FONT = pg.font.SysFont("Arial", 38)
+	SMALL_FONT = pg.font.SysFont("Arial", 24)
 	pg.display.set_caption("TANKS")
 	pg.display.set_mode(SCREEN_SIZE)
 	TURRET = pg.transform.scale(pg.image.load("Textures/Tank_Turret.png").convert_alpha(),(75, 75))
 	TANK = pg.transform.scale(pg.image.load("Textures/Tank_Base.png").convert_alpha(), (50, 50))
 	BULLET = pg.transform.scale(pg.image.load("Textures/Bullet.png").convert_alpha(), (40, 40))
 	ISLAND = pg.transform.scale(pg.image.load("Textures/Island.png").convert_alpha(), (BORDER_SIZE, BORDER_SIZE))
-	MISSILE_1 = pg.transform.scale(pg.image.load("Textures/Missile_1.png").convert_alpha(),(100, 100)).subsurface((10, 35, 90, 30))
-	MISSILE_2 = pg.transform.scale(pg.image.load("Textures/Missile_2.png").convert_alpha(),(100, 100)).subsurface((10, 35, 90, 30))
-	MISSILE_3 = pg.transform.scale(pg.image.load("Textures/Missile_3.png").convert_alpha(),(100, 100)).subsurface((10, 35, 90, 30))
+	MISSILE_1 = pg.transform.scale(pg.image.load("Textures/Missile_1.png").convert_alpha(),(100, 100)).subsurface((10, 40, 80, 25))
+	MISSILE_2 = pg.transform.scale(pg.image.load("Textures/Missile_2.png").convert_alpha(),(100, 100)).subsurface((10, 40, 80, 25))
+	MISSILE_3 = pg.transform.scale(pg.image.load("Textures/Missile_3.png").convert_alpha(),(100, 100)).subsurface((10, 40, 80, 25))
 	run = Driver()
-	run.game_loop()
+	while run.menu_loop():
+		run.game_loop()
 	pg.quit()
 	sys.exit()			
