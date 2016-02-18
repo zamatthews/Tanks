@@ -12,7 +12,8 @@ CAPTION = "Tanks"
 SCREEN_SIZE = (700, 700)
 BACKGROUND_COLOR = (33, 17, 255)
 BORDER_SIZE = 500
-bonus = 0
+FPS_LOCK = 60
+GAME_OVER = False
 
 class gun_type(Enum):
 	basic = 1
@@ -21,8 +22,8 @@ class gun_type(Enum):
 class Tank(object):
 	def __init__(self, location):
 		self.turret_start = TURRET
-		self.turret = TURRET;
-		self.tank_start = TANK;
+		self.turret = TURRET
+		self.tank_start = TANK
 		self.tank = TANK
 		self.turret_rect = self.turret.get_rect(center = location)
 		self.tank_rect = self.tank.get_rect(center = location)
@@ -32,11 +33,11 @@ class Tank(object):
 		self.turret_direction = 0
 		self.tank_spin_direction = 0
 		self.tank_move_direction = 0
-		self.rotate_speed = 1
-		self.turn_speed = 1
-		self.move_speed = 1
+		self.rotate_speed = 5
+		self.turn_speed = 2.5
+		self.move_speed = 2.5
 		self.bullet_timer = 0
-		self.gun_cooldown = 0
+		self.gun_cooldown = 50
 		self.gun = gun_type.basic
 		
 	def spin_turret(self):
@@ -52,6 +53,8 @@ class Tank(object):
 		
 	def get_pos(self):
 		return self.tank_pos
+	def get_rect(self):
+		return self.tank_rect
 		
 	def move_tank(self, island_rect):
 		new_x = self.tank_pos[0] + self.move_speed*math.sin(math.radians(self.tank_angle - 90))*self.tank_move_direction
@@ -107,16 +110,23 @@ class Tank(object):
 		self.turret_direction = 0
 		self.tank_spin_direction = 0
 		self.tank_move_direction = 0
-		global bonus 
-		if bonus < 10:
-			gun = gun_type.basic
-			self.gun_cooldown = 140
-		elif bonus < 25:
+		
+	def upgrade(self):
+		if self.gun == gun_type.basic:
 			self.gun = gun_type.advanced
-			self.gun_cooldown = 120
-		else:
+		elif self.gun == gun_type.advanced:
 			self.gun = gun_type.ultra
-			self.gun_cooldown = 120
+		else:
+			self.gun_cooldown -= 5
+			
+	def downgrade(self):
+		self.gun_cooldown = 50
+		if self.gun == gun_type.advanced:
+			self.gun = gun_type.basic
+		elif self.gun == gun_type.ultra:
+			self.gun = gun_type.advanced
+		else:
+			GAME_OVER = True
 		
 	def draw(self, surface):
 		surface.blit(self.tank, self.tank_rect);
@@ -141,7 +151,7 @@ class bullet(pg.sprite.Sprite):
 		pg.sprite.Sprite.__init__(self)
 		self.angle = angle
 		self.image = pg.transform.rotate(BULLET, angle - 90)
-		self.speed = 2
+		self.speed = 10
 		self.pos = location
 		self.rect = self.image.get_rect(center=location)
 		self.done = False;
@@ -153,8 +163,8 @@ class bullet(pg.sprite.Sprite):
 	def remove(self, screen_rect):
 		if not self.rect.colliderect(screen_rect):
 			self.kill()
-	def get_rect(self):
-		return self.rect
+	def get_pos(self):
+		return self.pos
 			
 class missile_type(Enum):
 	easy = 1
@@ -170,9 +180,9 @@ class missile(pg.sprite.Sprite):
 		
 		if type == missile_type.easy:
 			self.image = pg.transform.rotate(MISSILE_1, angle)
-			self.speed = 1.5
+			self.speed = 4
 		else:
-			self.speed = 2.0
+			self.speed = 6
 			self.angle = ( math.atan((player_pos[0] - location[0])/ (player_pos[1] - location[1]))) * 180/math.pi - 90;
 			if player_pos[1] < location[1]:
 				self.angle += 180
@@ -180,9 +190,8 @@ class missile(pg.sprite.Sprite):
 		if type == missile_type.normal:
 			self.image = pg.transform.rotate(MISSILE_2, self.angle)
 		if type == missile_type.hard:
+			self.speed = 4.5
 			self.image = pg.transform.rotate(MISSILE_3, self.angle)
-			self.speed = 1.25
-			
 		self.pos = location
 		self.rect = self.image.get_rect(center=location)
 		self.done = False;
@@ -197,17 +206,21 @@ class missile(pg.sprite.Sprite):
 		self.pos = (self.pos[0] + self.speed*math.sin(math.radians(self.angle + 90)), self.pos[1] + self.speed*math.cos(math.radians(self.angle + 90)))
 		self.rect = self.image.get_rect(center = self.pos)
 		self.remove(screen_rect)
-	def check_shot(self, bullet_rect):
-		if self.rect.contains(bullet_rect):
+	def check_shot(self, bullet):
+		if self.rect.collidepoint(bullet.get_pos()):
 			self.kill()
-			global bonus
-			bonus += 1
 			return True
+			
+	def check_hit(self, tank_rect):
+		if self.rect.colliderect(tank_rect):
+			self.kill()
+			return True
+		return False
+	
+	
 	def remove(self, screen_rect):
 		if not self.rect.colliderect(screen_rect):
 			self.kill()
-			global bonus
-			bonus -= 1;
 		
 		
 class Driver(object):
@@ -221,11 +234,13 @@ class Driver(object):
 		self.missiles = pg.sprite.Group()
 		self.island = ISLAND
 		self.island_rect = self.island.get_rect(center =(SCREEN_SIZE[0] / 2, SCREEN_SIZE[1] / 2))
-		self.frequency = 1024
-		self.goal_amount = 4
+		self.frequency = 256
+		self.goal_amount = 5
 		self.missile_chance = (100, 0, 0)
 		self.missile_tick = 0;
 		self.score = 0;
+		self.clock = pg.time.Clock()
+		self.fps = FPS_LOCK
 
 	def update_objects(self):
 		self.check_collisions()
@@ -245,6 +260,10 @@ class Driver(object):
 			for missile in self.missiles:
 				if missile.check_shot(bullet):
 					self.score += 1
+					print(self.score)
+		for missile in self.missiles:		
+			if(missile.check_hit(self.player.get_rect())):
+				self.player.downgrade()
 	
 	def game_loop(self):
 		while not self.done:
@@ -262,9 +281,12 @@ class Driver(object):
 			self.missile_tick += 1
 			if(self.score >= self.goal_amount):
 				self.new_wave()
+			self.clock.tick(self.fps)
+			pg.display.set_caption("{} - FPS: {:.2f}".format(CAPTION, self.clock.get_fps()))
+			
 	def add_missile(self):
 		side = randint(1, 4)
-		side_pos = randint(0, SCREEN_SIZE[0]);
+		side_pos = randint(100, SCREEN_SIZE[0] - 100);
 		if side == 1:
 			location = (0, side_pos)
 			angle = 0
@@ -290,7 +312,8 @@ class Driver(object):
 	
 	def new_wave(self):
 		self.frequency /= 1.5
-		self.goal_amount *= 2
+		self.goal_amount += 1.5 * self.goal_amount
+		self.player.upgrade()
 		missile_3_chance = self.missile_chance[2] + self.missile_chance[1] / 3
 		missile_2_chance  = self.missile_chance[1] * 2 / 3
 		missile_2_chance += self.missile_chance[0] / 3
@@ -307,9 +330,9 @@ if __name__ == "__main__":
 	TANK = pg.transform.scale(pg.image.load("Textures/Tank_Base.png").convert_alpha(), (50, 50))
 	BULLET = pg.transform.scale(pg.image.load("Textures/Bullet.png").convert_alpha(), (40, 40))
 	ISLAND = pg.transform.scale(pg.image.load("Textures/Island.png").convert_alpha(), (BORDER_SIZE, BORDER_SIZE))
-	MISSILE_1 = pg.transform.scale(pg.image.load("Textures/Missile_1.png").convert_alpha(),(100, 100))
-	MISSILE_2 = pg.transform.scale(pg.image.load("Textures/Missile_2.png").convert_alpha(),(100, 100))
-	MISSILE_3 = pg.transform.scale(pg.image.load("Textures/Missile_3.png").convert_alpha(),(100, 100))
+	MISSILE_1 = pg.transform.scale(pg.image.load("Textures/Missile_1.png").convert_alpha(),(100, 100)).subsurface((10, 35, 90, 30))
+	MISSILE_2 = pg.transform.scale(pg.image.load("Textures/Missile_2.png").convert_alpha(),(100, 100)).subsurface((10, 35, 90, 30))
+	MISSILE_3 = pg.transform.scale(pg.image.load("Textures/Missile_3.png").convert_alpha(),(100, 100)).subsurface((10, 35, 90, 30))
 	run = Driver()
 	run.game_loop()
 	pg.quit()
