@@ -82,6 +82,7 @@ class Tank(object):
 		if keys[pg.K_RIGHT]:
 			self.turret_direction = -1
 		if keys[pg.K_SPACE] and self.bullet_timer == 0:
+			SHOT_SOUND.play()
 			self.add_bullet(bullets)
 			bullets.add(bullet(self.turret_rect.center, self.turret_angle))
 			self.bullet_timer = self.gun_cooldown
@@ -206,11 +207,13 @@ class missile(pg.sprite.Sprite):
 		self.remove(screen_rect)
 	def check_shot(self, bullet):
 		if self.rect.collidepoint(bullet.get_pos()):
+			MISSILE_SOUND.play()
 			self.kill()
 			return True
 			
 	def check_hit(self, tank_rect, screen):
 		if self.rect.colliderect(tank_rect):
+			MISSILE_SOUND.play()
 			self.kill()
 			return True
 		return False
@@ -410,6 +413,9 @@ if __name__ == "__main__":
 	MISSILE_1 = pg.transform.scale(pg.image.load("Textures/Missile_1.png").convert_alpha(),(100, 100)).subsurface((10, 40, 80, 25))
 	MISSILE_2 = pg.transform.scale(pg.image.load("Textures/Missile_2.png").convert_alpha(),(100, 100)).subsurface((10, 40, 80, 25))
 	MISSILE_3 = pg.transform.scale(pg.image.load("Textures/Missile_3.png").convert_alpha(),(100, 100)).subsurface((10, 40, 80, 25))
+	SHOT_SOUND = pg.mixer.Sound('Sounds/Shot.wav')
+	MISSILE_SOUND = pg.mixer.Sound('Sounds/Small_Explosion.wav')
+	
 	run = Driver()
 	while run.menu_loop():
 		run.game_loop()
